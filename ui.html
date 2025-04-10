@@ -225,6 +225,20 @@
                 </div>
             </div>
         </div>
+        <div class="row">
+            <div class="col">
+                <div class="form-group">
+                    <label for="variance-threshold">Variance Threshold</label>
+                    <input type="number" id="variance-threshold" value="0.1" min="0" max="1" step="0.01">
+                </div>
+            </div>
+            <div class="col">
+                <div class="form-group">
+                    <label for="max-quadtree-levels">Max Quadtree Levels</label>
+                    <input type="number" id="max-quadtree-levels" value="5" min="1" max="10">
+                </div>
+            </div>
+        </div>
     </div>
 
     <button id="create-mosaic">Create Mosaic</button>
@@ -234,7 +248,7 @@
         async function calculateImageData(bytes, gridSize, transparencyIsWhite = false) {
             return new Promise((resolve, reject) => {
                 const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 
                 // Create an image from the bytes
                 const blob = new Blob([bytes], { type: 'image/png' });
@@ -243,6 +257,7 @@
                 
                 img.onload = () => {
                     try {
+                        console.log("Image loaded, processing...");
                         // Resize canvas to match image
                         canvas.width = img.width;
                         canvas.height = img.height;
@@ -333,15 +348,18 @@
                         URL.revokeObjectURL(url);
                         
                         // Return the data map
+                        console.log("Image data processed, resolving promise...");
                         resolve(dataMap);
                     } catch (e) {
                         URL.revokeObjectURL(url);
+                        console.error("Error processing image data:", e);
                         reject(e);
                     }
                 };
                 
                 img.onerror = (err) => {
                     URL.revokeObjectURL(url);
+                    console.error("Error loading image:", err);
                     reject(err);
                 };
                 
@@ -353,7 +371,7 @@
         async function calculateComponentData(bytes, transparencyIsWhite = false) {
             return new Promise((resolve, reject) => {
                 const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 
                 // Create an image from the bytes
                 const blob = new Blob([bytes], { type: 'image/png' });
@@ -362,6 +380,7 @@
                 
                 img.onload = () => {
                     try {
+                        console.log("Component image loaded, processing...");
                         // Resize canvas to match image
                         canvas.width = img.width;
                         canvas.height = img.height;
@@ -433,6 +452,7 @@
                         URL.revokeObjectURL(url);
                         
                         // Return component data
+                        console.log("Component data processed, resolving promise...");
                         resolve({
                             brightness: avgBrightness,
                             color: { r: avgR, g: avgG, b: avgB },
@@ -440,12 +460,14 @@
                         });
                     } catch (e) {
                         URL.revokeObjectURL(url);
+                        console.error("Error processing component data:", e);
                         reject(e);
                     }
                 };
                 
                 img.onerror = (err) => {
                     URL.revokeObjectURL(url);
+                    console.error("Error loading component image:", err);
                     reject(err);
                 };
                 
@@ -479,6 +501,7 @@
             // Handle process-image request
             if (message.type === 'process-image') {
                 try {
+                    console.log("Processing image data...");
                     const imageTransparencyIsWhite = message.imageTransparencyIsWhite || false;
                     const dataMap = await calculateImageData(
                         message.bytes,
@@ -487,6 +510,7 @@
                     );
                     
                     // Send result back to plugin
+                    console.log("Sending image data result back to plugin...");
                     parent.postMessage({
                         pluginMessage: {
                             type: 'image-data-result',
@@ -519,6 +543,7 @@
             // Handle process-component request
             if (message.type === 'process-component') {
                 try {
+                    console.log("Processing component data...");
                     const componentTransparencyIsWhite = message.componentTransparencyIsWhite || false;
                     const componentData = await calculateComponentData(
                         message.bytes,
@@ -526,6 +551,7 @@
                     );
                     
                     // Send result back to plugin
+                    console.log("Sending component data result back to plugin...");
                     parent.postMessage({
                         pluginMessage: {
                             type: 'component-data-result',
@@ -624,7 +650,9 @@
                 useComponentVariants: document.getElementById('use-variants').checked,
                 imageTransparencyIsWhite: document.getElementById('image-transparency').checked,
                 componentTransparencyIsWhite: document.getElementById('component-transparency').checked,
-                variationCount: parseInt(document.getElementById('variation-count').value)
+                variationCount: parseInt(document.getElementById('variation-count').value),
+                varianceThreshold: parseFloat(document.getElementById('variance-threshold').value),
+                maxQuadtreeLevels: parseInt(document.getElementById('max-quadtree-levels').value)
             };
         
             if (!config.componentId) {

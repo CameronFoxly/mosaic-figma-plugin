@@ -59,6 +59,7 @@ function getImageData(node, gridSize, config) {
         // Return a Promise that will resolve when UI sends back the result
         return new Promise((resolve) => {
             const handler = (msg) => {
+                console.log("Message received in handler:", msg);
                 if (msg.type === 'image-data-result' && msg.dataMap) {
                     console.log("Received image data from UI");
                     figma.ui.off('message', handler);
@@ -89,7 +90,7 @@ function getImageData(node, gridSize, config) {
                     }
                 }
                 resolve(result);
-            }, 10000);
+            }, 30000); // Increased timeout to 30 seconds
         });
     });
 }
@@ -277,6 +278,59 @@ function createMosaicVariations(baseFrame, imageData, componentLibrary, config, 
         figma.notify(`Created ${variationCount} mosaic variations`, { timeout: 2000 });
     });
 }
+// Function to calculate variance of a region
+function calculateVariance(imageData, x, y, width, height) {
+    let totalBrightness = 0;
+    let totalPixels = 0;
+    for (let i = y; i < y + height; i++) {
+        for (let j = x; j < x + width; j++) {
+            const pixel = imageData[i][j];
+            totalBrightness += pixel.brightness;
+            totalPixels++;
+        }
+    }
+    const meanBrightness = totalBrightness / totalPixels;
+    let variance = 0;
+    for (let i = y; i < y + height; i++) {
+        for (let j = x; j < x + width; j++) {
+            const pixel = imageData[i][j];
+            variance += Math.pow(pixel.brightness - meanBrightness, 2);
+        }
+    }
+    return variance / totalPixels;
+}
+// Quadtree node class
+class QuadtreeNode {
+    constructor(x, y, width, height, level) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.level = level;
+        this.children = [];
+    }
+    subdivide(imageData, varianceThreshold, maxLevels) {
+        if (this.level >= maxLevels)
+            return;
+        const variance = calculateVariance(imageData, this.x, this.y, this.width, this.height);
+        console.log(`Variance at level ${this.level} for region (${this.x}, ${this.y}, ${this.width}, ${this.height}): ${variance}`);
+        if (variance < varianceThreshold)
+            return;
+        const halfWidth = Math.floor(this.width / 2);
+        const halfHeight = Math.floor(this.height / 2);
+        this.children.push(new QuadtreeNode(this.x, this.y, halfWidth, halfHeight, this.level + 1));
+        this.children.push(new QuadtreeNode(this.x + halfWidth, this.y, halfWidth, halfHeight, this.level + 1));
+        this.children.push(new QuadtreeNode(this.x, this.y + halfHeight, halfWidth, halfHeight, this.level + 1));
+        this.children.push(new QuadtreeNode(this.x + halfWidth, this.y + halfHeight, halfWidth, halfHeight, this.level + 1));
+        this.children.forEach(child => child.subdivide(imageData, varianceThreshold, maxLevels));
+    }
+}
+// Function to create quadtree from image data
+function createQuadtree(imageData, varianceThreshold, maxLevels) {
+    const root = new QuadtreeNode(0, 0, imageData[0].length, imageData.length, 0);
+    root.subdivide(imageData, varianceThreshold, maxLevels);
+    return root;
+}
 // Create the mosaic using brightness and color data
 function createMosaic(selectedImage, componentLibrary, config, imageData) {
     var _a;
@@ -319,63 +373,44 @@ function createMosaic(selectedImage, componentLibrary, config, imageData) {
                 mosaicGroup.remove();
                 return;
             }
-            for (let y = 0; y < yTileCount; y++) {
-                for (let batchStartX = 0; batchStartX < xTileCount; batchStartX += BATCH_SIZE) {
-                    const batchEndX = Math.min(batchStartX + BATCH_SIZE, xTileCount);
-                    // Process this batch
-                    for (let x = batchStartX; x < batchEndX; x++) {
-                        try {
-                            // Get data for this position
-                            // Map x,y coordinates to data map indices
-                            const mapX = Math.min(imageData[0].length - 1, Math.floor(x * imageData[0].length / xTileCount));
-                            const mapY = Math.min(imageData.length - 1, Math.floor(y * imageData.length / yTileCount));
-                            const cellData = imageData[mapY][mapX];
-                            // Calculate similarity score for each component
-                            // This combines brightness and color matching
-                            let bestMatch = componentLibrary[0].component;
-                            let bestScore = Number.MAX_VALUE;
-                            // Score each component
-                            for (const compData of componentLibrary) {
-                                // Calculate brightness difference (weighted at 60%)
-                                const brightnessDiff = Math.abs(cellData.brightness - compData.brightness);
-                                // Calculate color difference (weighted at 40%)
-                                // Using color distance formula
-                                const colorDiff = Math.sqrt(Math.pow(cellData.color.r - compData.color.r, 2) +
-                                    Math.pow(cellData.color.g - compData.color.g, 2) +
-                                    Math.pow(cellData.color.b - compData.color.b, 2)) / Math.sqrt(3); // Normalized to 0-1
-                                // Combined score (lower is better)
-                                const score = brightnessDiff * 0.6 + colorDiff * 0.4;
-                                // Apply a small penalty for overused components
-                                const usageCount = componentUsage.get(compData.component.id) || 0;
-                                const usagePenalty = Math.min(usageCount * 0.01, 0.1); // Cap the penalty
-                                if (score + usagePenalty < bestScore) {
-                                    bestScore = score + usagePenalty;
-                                    bestMatch = compData.component;
-                                }
-                            }
-                            // Create component instance
-                            const instance = bestMatch.createInstance();
-                            instance.x = x * config.tileSize;
-                            instance.y = y * config.tileSize;
-                            instance.resize(config.tileSize, config.tileSize);
-                            mosaicGroup.appendChild(instance);
-                            // Update component usage
-                            const currentUsage = componentUsage.get(bestMatch.id) || 0;
-                            componentUsage.set(bestMatch.id, currentUsage + 1);
-                            // Update progress
-                            completedTiles++;
-                            if (completedTiles % 50 === 0 || completedTiles === totalTiles) {
-                                figma.notify(`Creating mosaic: ${Math.round((completedTiles / totalTiles) * 100)}%`, { timeout: 500 });
-                            }
-                        }
-                        catch (error) {
-                            console.error(`Error processing tile at (${x}, ${y}):`, error);
+            const quadtree = createQuadtree(imageData, config.varianceThreshold, config.maxQuadtreeLevels);
+            const nodesToProcess = [quadtree];
+            while (nodesToProcess.length > 0) {
+                const node = nodesToProcess.pop();
+                if (node.children.length === 0) {
+                    console.log(`Processing node at (${node.x}, ${node.y}) with size (${node.width}, ${node.height})`);
+                    const mapX = Math.min(imageData[0].length - 1, Math.floor(node.x * imageData[0].length / width));
+                    const mapY = Math.min(imageData.length - 1, Math.floor(node.y * imageData.length / height));
+                    const cellData = imageData[mapY][mapX];
+                    let bestMatch = componentLibrary[0].component;
+                    let bestScore = Number.MAX_VALUE;
+                    for (const compData of componentLibrary) {
+                        const brightnessDiff = Math.abs(cellData.brightness - compData.brightness);
+                        const colorDiff = Math.sqrt(Math.pow(cellData.color.r - compData.color.r, 2) +
+                            Math.pow(cellData.color.g - compData.color.g, 2) +
+                            Math.pow(cellData.color.b - compData.color.b, 2)) / Math.sqrt(3);
+                        const score = brightnessDiff * 0.6 + colorDiff * 0.4;
+                        if (score < bestScore) {
+                            bestScore = score;
+                            bestMatch = compData.component;
                         }
                     }
-                    // Let the UI update between batches
-                    yield new Promise(resolve => setTimeout(resolve, 0));
+                    const instance = bestMatch.createInstance();
+                    instance.x = node.x * config.tileSize;
+                    instance.y = node.y * config.tileSize;
+                    instance.resize(node.width * config.tileSize, node.height * config.tileSize);
+                    mosaicGroup.appendChild(instance);
+                    completedTiles++;
+                    const currentUsage = componentUsage.get(bestMatch.id) || 0;
+                    componentUsage.set(bestMatch.id, currentUsage + 1);
+                }
+                else {
+                    nodesToProcess.push(...node.children);
                 }
             }
+            console.log(`Completed tiles: ${completedTiles}`);
+            console.log(`Unique components used: ${componentUsage.size}`);
+            figma.notify(`Mosaic created using quadtree algorithm.`);
             // Calculate statistics about component usage
             const uniqueComponentsUsed = componentUsage.size;
             let mostUsedComponent = '';
@@ -459,6 +494,7 @@ function getCurrentPageComponents() {
 }
 // Plugin UI message handler
 figma.ui.onmessage = (msg) => __awaiter(this, void 0, void 0, function* () {
+    console.log("Message received from UI:", msg);
     if (msg.type === 'get-current-page-components') {
         // Send list of components from current page to UI
         figma.ui.postMessage({
@@ -520,13 +556,12 @@ figma.ui.onmessage = (msg) => __awaiter(this, void 0, void 0, function* () {
             figma.notify('Error creating mosaic. See console for details.');
         }
     }
-    // These handlers are not needed since we're using promises with closures
     else if (msg.type === 'image-data-result') {
-        console.log('Received image data from UI (main handler)');
+        console.log('Received image data from UI (main handler)', msg);
         // This will be handled by the Promise in getImageData
     }
     else if (msg.type === 'component-data-result') {
-        console.log(`Received data for component ${msg.componentId} (main handler)`);
+        console.log(`Received data for component ${msg.componentId} (main handler)`, msg);
         // This will be handled by the Promise in getComponentData
     }
 });

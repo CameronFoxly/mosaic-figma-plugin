@@ -18,6 +18,16 @@ This Figma plugin converts an image into a mosaic using a specified component li
 1. Create components in your Figma file that are exactly 50x50 pixels
 2. Select the image you want to convert to a mosaic
 3. Run the plugin and click "Create Mosaic"
+4. Configure the following options:
+   - **Tile Size (px)**: Size of each tile in pixels.
+   - **Scale**: Enlargement factor for the mosaic.
+   - **Detail (1-10)**: Matching resolution for tiles.
+   - **Variations (slower)**: Number of variations to generate.
+   - **Variance Threshold**: Threshold for variance in quadtree subdivision.
+   - **Max Quadtree Levels**: Maximum levels for quadtree subdivision.
+   - **Use all variants (recommended)**: Whether to use all variants of the selected component.
+   - **Image transparency is white**: Treat transparent pixels in the image as white.
+   - **Component transparency is white**: Treat transparent pixels in the components as white.
 
 ## License
 

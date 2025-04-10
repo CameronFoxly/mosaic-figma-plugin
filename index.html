@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Cat Shooting Lasers</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+    // Set up scene, camera, and renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Add OrbitControls for better visualization
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+    // Create a simple 3D cat
+    function createCat() {
+        const cat = new THREE.Group();
+
+        // Body
+        const bodyGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+        const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.set(0, 0.25, 0);
+        cat.add(body);
+
+        // Head
+        const headGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        const headMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.set(0, 0.75, 1.25);
+        cat.add(head);
+
+        // Ears
+        const earGeometry = new THREE.BoxGeometry(0.2, 0.4, 0.1);
+        const earMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+        const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+        const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+        leftEar.position.set(-0.2, 1, 1.5);
+        rightEar.position.set(0.2, 1, 1.5);
+        cat.add(leftEar);
+        cat.add(rightEar);
+
+        // Tail
+        const tailGeometry = new THREE.BoxGeometry(0.1, 0.1, 1);
+        const tailMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+        const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+        tail.position.set(0, 0.25, -1.5);
+        tail.rotation.x = Math.PI / 4;
+        cat.add(tail);
+
+        return cat;
+    }
+
+    const cat = createCat();
+    scene.add(cat);
+
+    // Set camera position
+    camera.position.z = 5;
+
+    // Create lasers
+    const lasers = [];
+    function createLaser() {
+        const laserGeometry = new THREE.CylinderGeometry(0.05, 0.05, 2, 32);
+        const laserMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const laser = new THREE.Mesh(laserGeometry, laserMaterial);
+        laser.rotation.x = Math.PI / 2;
+        return laser;
+    }
+
+    function shootLasers() {
+        const leftLaser = createLaser();
+        const rightLaser = createLaser();
+        leftLaser.position.set(-0.1, 0.75, 1.75);
+        rightLaser.position.set(0.1, 0.75, 1.75);
+        lasers.push(leftLaser, rightLaser);
+        scene.add(leftLaser, rightLaser);
+    }
+
+    setInterval(shootLasers, 1000); // Shoot lasers every second
+
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Rotate the cat for demonstration
+        cat.rotation.y += 0.01;
+
+        // Move lasers
+        for (let i = lasers.length - 1; i >= 0; i--) {
+            lasers[i].position.z += 0.1;
+            if (lasers[i].position.z > 10) {
+                scene.remove(lasers[i]);
+                lasers.splice(i, 1);
+            }
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
