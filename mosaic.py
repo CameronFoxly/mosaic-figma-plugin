@@ -17,8 +17,7 @@ class TileProcessor:
 	def __init__(self, tiles_directory):
 		self.tiles_directory = tiles_directory
 
-	def __process_tile(self, tile_path):
-		try:
+	def __proc
 			img = Image.open(tile_path)
 			img = ImageOps.exif_transpose(img)
 
